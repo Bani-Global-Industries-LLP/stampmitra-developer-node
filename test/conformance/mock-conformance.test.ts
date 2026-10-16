@@ -401,10 +401,40 @@ describe.skipIf(!haveSpec)('mock-server conformance', () => {
       expect(reqs.map((r) => r.headers['idempotency-key'])).toEqual(['my-key-1', 'my-key-1']);
     });
 
-    it('billed verification POST is NOT retried on 503 and sends no Idempotency-Key', async () => {
+    it('verification POST 503,503,200 makes 3 attempts with the same auto key', async () => {
       const b = fx('POST', '/v1/verify/pan').request.body as never;
-      const err = await mk({}, 'seq:v:503,200')
-        .verify.pan(b)
+      const out = await mk({}, 'seq:v:503,503,200').verify.pan(b);
+      expect(out).toEqual(fx('POST', '/v1/verify/pan').response.body);
+      const reqs = await recorded();
+      expect(reqs).toHaveLength(3);
+      const keys = new Set(reqs.map((r) => r.headers['idempotency-key']));
+      expect(keys.size).toBe(1);
+      expect([...keys][0]).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+      );
+    });
+
+    it('verification POST keeps a caller-supplied key on every attempt', async () => {
+      const b = fx('POST', '/v1/verify/pan').request.body as never;
+      await mk({}, 'seq:vk:503,200').verify.pan(b, { idempotencyKey: 'caller-key-9' });
+      const reqs = await recorded();
+      expect(reqs.map((r) => r.headers['idempotency-key'])).toEqual([
+        'caller-key-9',
+        'caller-key-9',
+      ]);
+    });
+
+    it('verification POST 429 is retried (same key) and succeeds', async () => {
+      const b = fx('POST', '/v1/verify/pan').request.body as never;
+      await mk({}, 'seq:v429:429,200').verify.pan(b);
+      const reqs = await recorded();
+      expect(reqs).toHaveLength(2);
+      expect(reqs[0]!.headers['idempotency-key']).toBe(reqs[1]!.headers['idempotency-key']);
+    });
+
+    it('webhook replay is never auto-keyed and not retried after a 503', async () => {
+      const err = await mk({}, 'seq:rp:503,200')
+        .webhooks.events.replay('evt_1')
         .catch((e: unknown) => e);
       expect(err).toBeInstanceOf(UpstreamError);
       const reqs = await recorded();
@@ -412,16 +442,7 @@ describe.skipIf(!haveSpec)('mock-server conformance', () => {
       expect(reqs[0]!.headers['idempotency-key']).toBeUndefined();
     });
 
-    it('billed verification POST is NOT retried on 429', async () => {
-      const b = fx('POST', '/v1/verify/pan').request.body as never;
-      const err = await mk({}, 'error-429')
-        .verify.pan(b)
-        .catch((e: unknown) => e);
-      expect(err).toBeInstanceOf(RateLimitError);
-      expect(await recorded()).toHaveLength(1);
-    });
-
-    it('billed verification POST IS retried after a pre-response connection drop', async () => {
+    it('verification POST IS retried after a pre-response connection drop', async () => {
       const b = fx('POST', '/v1/verify/pan').request.body as never;
       const out = await mk({}, 'seq:c:conn,200').verify.pan(b);
       expect(out).toEqual(fx('POST', '/v1/verify/pan').response.body);
@@ -433,14 +454,16 @@ describe.skipIf(!haveSpec)('mock-server conformance', () => {
       expect(await recorded()).toHaveLength(2);
     });
 
-    it('timeout: TimeoutError, and a billed POST is not retried after a timeout', async () => {
+    it('timeout: a keyed verification POST is retried with the same key, then TimeoutError', async () => {
       const b = fx('POST', '/v1/verify/pan').request.body as never;
-      const err = await mk({ timeout: 50, maxRetries: 2 }, 'delay:400')
+      const err = await mk({ timeout: 50, maxRetries: 1 }, 'delay:400')
         .verify.pan(b)
         .catch((e: unknown) => e);
       expect(err).toBeInstanceOf(TimeoutError);
       await new Promise((r) => setTimeout(r, 450));
-      expect(await recorded()).toHaveLength(1);
+      const reqs = await recorded();
+      expect(reqs).toHaveLength(2);
+      expect(reqs[0]!.headers['idempotency-key']).toBe(reqs[1]!.headers['idempotency-key']);
     });
 
     it('connection refused raises ConnectionError (after retries for GET)', async () => {

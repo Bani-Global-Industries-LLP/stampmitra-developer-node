@@ -132,7 +132,7 @@ describe('requests', () => {
       /^stampmitra-node\/0\.1\.0 \(node\/[\d.]+\) myapp\/2\.0$/,
     );
     expect(JSON.parse(c.body!)).toEqual({ pan: 'ABCDE1234F', name: 'Rahul' });
-    expect(c.headers['Idempotency-Key']).toBeUndefined();
+    expect(c.headers['Idempotency-Key']).toMatch(/^[0-9a-f-]{36}$/);
   });
   it('honours baseUrl, defaultHeaders and per-request headers', async () => {
     const { client, calls } = makeClient([200], {
@@ -341,24 +341,37 @@ describe('idempotency', () => {
     await client.payments.intents.create({ orderId: 'o' }, { idempotencyKey: 'mine' });
     expect(calls[0]!.headers['Idempotency-Key']).toBe('mine');
   });
-  it('parties also auto-keys; duty/replay do not and are not retried', async () => {
-    const a = makeClient([200]);
+  it('parties and duty auto-key and retry with one key; replay is never auto-keyed or retried', async () => {
+    const a = makeClient([503, 200]);
     await a.client.estamp.addParties('o1', { parties: [] });
+    expect(a.calls).toHaveLength(2);
     expect(a.calls[0]!.headers['Idempotency-Key']).toBeTruthy();
     const b = makeClient([503, 200]);
-    await expect(b.client.estamp.calculateDuty({ state: 'MH' })).rejects.toBeInstanceOf(
-      UpstreamError,
-    );
-    expect(b.calls).toHaveLength(1);
-    expect(b.calls[0]!.headers['Idempotency-Key']).toBeUndefined();
+    await b.client.estamp.calculateDuty({ state: 'MH' });
+    expect(b.calls).toHaveLength(2);
+    expect(new Set(b.calls.map((c) => c.headers['Idempotency-Key'])).size).toBe(1);
+    expect(b.calls[0]!.headers['Idempotency-Key']).toBeTruthy();
     const c = makeClient([503, 200]);
     await expect(c.client.webhooks.events.replay('e1')).rejects.toBeInstanceOf(UpstreamError);
     expect(c.calls).toHaveLength(1);
+    expect(c.calls[0]!.headers['Idempotency-Key']).toBeUndefined();
   });
-  it('an explicit key on duty/calculate enables retries', async () => {
-    const { client, calls } = makeClient([503, 200]);
-    await client.estamp.calculateDuty({ state: 'MH' }, { idempotencyKey: 'k' });
+  it('replay never carries an auto key, even on a pre-response connection retry', async () => {
+    const { client, calls } = makeClient(['connection_error', 200]);
+    await client.webhooks.events.replay('e1');
     expect(calls).toHaveLength(2);
+    expect(calls.every((c) => c.headers['Idempotency-Key'] === undefined)).toBe(true);
+  });
+  it('an explicit key on replay is sent and enables retries', async () => {
+    const { client, calls } = makeClient([503, 200]);
+    await client.webhooks.events.replay('e1', { idempotencyKey: 'k' });
+    expect(calls).toHaveLength(2);
+    expect(calls.map((c) => c.headers['Idempotency-Key'])).toEqual(['k', 'k']);
+  });
+  it('a caller-supplied key on a verification POST is preserved across retries', async () => {
+    const { client, calls } = makeClient([503, 200]);
+    await client.verify.pan(PAN, { idempotencyKey: 'mine-1' });
+    expect(calls.map((c) => c.headers['Idempotency-Key'])).toEqual(['mine-1', 'mine-1']);
   });
   it('orders.create validates required fields locally', async () => {
     const { client, calls } = makeClient([200]);
@@ -369,21 +382,46 @@ describe('idempotency', () => {
   });
 });
 
-describe('billed verification POSTs', () => {
-  it.each([502, 503, 504, 429])('never retried on %i', async (status) => {
+describe('billed verification POSTs (auto-keyed, retried with the same key)', () => {
+  it.each([502, 503, 504, 429])('retried on %i with the same auto key', async (status) => {
     const { client, calls } = makeClient([status, 200]);
+    await client.verify.pan(PAN);
+    expect(calls).toHaveLength(2);
+    const keys = calls.map((c) => c.headers['Idempotency-Key']);
+    expect(keys[0]).toBeTruthy();
+    expect(keys[1]).toBe(keys[0]);
+  });
+  it('503,503,200 makes 3 attempts with one key', async () => {
+    const { client, calls } = makeClient([503, 503, 200]);
+    await client.verify.pan(PAN);
+    expect(calls).toHaveLength(3);
+    expect(new Set(calls.map((c) => c.headers['Idempotency-Key'])).size).toBe(1);
+  });
+  it('different calls get different keys', async () => {
+    const { client, calls } = makeClient([200]);
+    await client.verify.pan(PAN);
+    await client.verify.pan(PAN);
+    expect(calls[0]!.headers['Idempotency-Key']).not.toBe(calls[1]!.headers['Idempotency-Key']);
+  });
+  it('retried after a timeout (a key is always present)', async () => {
+    const { client, calls } = makeClient(['timeout', 200], { timeout: 10 });
+    await client.verify.pan(PAN);
+    expect(calls).toHaveLength(2);
+  });
+  it('exhausts retries and throws the last error', async () => {
+    const { client, calls } = makeClient([503]);
+    await expect(client.verify.pan(PAN)).rejects.toBeInstanceOf(UpstreamError);
+    expect(calls).toHaveLength(3);
+  });
+  it('not retried on 4xx', async () => {
+    const { client, calls } = makeClient([400, 200]);
     await expect(client.verify.pan(PAN)).rejects.toBeInstanceOf(StampMitraError);
     expect(calls).toHaveLength(1);
   });
-  it('never retried after a timeout', async () => {
-    const { client, calls } = makeClient(['timeout', 200], { timeout: 10 });
-    await expect(client.verify.pan(PAN)).rejects.toBeInstanceOf(TimeoutError);
-    expect(calls).toHaveLength(1);
-  });
-  it('never retried when the failure came after the response started', async () => {
+  it('retried when the failure came after the response started', async () => {
     const { client, calls } = makeClient(['body_error', 200]);
-    await expect(client.verify.pan(PAN)).rejects.toBeInstanceOf(ConnectionError);
-    expect(calls).toHaveLength(1);
+    await client.verify.pan(PAN);
+    expect(calls).toHaveLength(2);
   });
   it('retried on a connection error before any response', async () => {
     const { client, calls } = makeClient(['connection_error', 200]);

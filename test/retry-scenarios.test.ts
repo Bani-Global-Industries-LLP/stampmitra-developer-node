@@ -42,6 +42,36 @@ function call(client: ReturnType<typeof makeClient>['client'], s: Scenario) {
   throw new Error(`unmapped scenario path ${path}`);
 }
 
+const RETRYABLE = new Set([429, 502, 503, 504]);
+const itemStatus = (i: unknown) => (typeof i === 'object' ? (i as { status: number }).status : i);
+
+/**
+ * The vendored fixtures encode the pre-Wave-2 rule (keyless billed POSTs are never retried). The SDK now
+ * auto-keys every POST except webhook replay, so those scenarios are evaluated as keyed: retry on
+ * 429/502/503/504, connection errors and timeouts until a non-retryable item or maxRetries.
+ */
+function keyedExpectation(s: Scenario): { attempts: number; outcome: number | string } {
+  const max = (s.maxRetries ?? 2) + 1;
+  let n = 0;
+  let last: unknown;
+  for (const item of s.sequence) {
+    n++;
+    last = item;
+    const st = itemStatus(item);
+    const retryable = typeof st === 'string' || RETRYABLE.has(st as number);
+    if (!retryable || n >= max) break;
+  }
+  const st = itemStatus(last);
+  if (typeof st === 'number' && st < 300) return { attempts: n, outcome: 200 };
+  if (st === 'timeout') return { attempts: n, outcome: 'TimeoutError' };
+  if (st === 'connection_error') return { attempts: n, outcome: 'ConnectionError' };
+  if (st === 429) {
+    const ra = (last as { headers?: Record<string, string> }).headers?.['Retry-After'];
+    return { attempts: n, outcome: `RateLimitError(retryAfter=${ra})` };
+  }
+  return { attempts: n, outcome: `UpstreamError(${st})` };
+}
+
 describe('shared retry scenarios', () => {
   for (const s of fixtures.scenarios as Scenario[]) {
     it(s.name, async () => {
@@ -56,8 +86,19 @@ describe('shared retry scenarios', () => {
           return e.name;
         },
       );
-      expect(calls.length).toBe(s.expectedAttempts);
-      expect(res).toBe(s.outcome);
+      const reKeyed =
+        s.method === 'POST' && s.idempotencyKey === false && !s.path.endsWith('/replay');
+      const want = reKeyed
+        ? keyedExpectation(s)
+        : { attempts: s.expectedAttempts, outcome: s.outcome };
+      expect(calls.length).toBe(want.attempts);
+      expect(res).toBe(want.outcome);
+      if (s.method === 'GET' || s.path.endsWith('/replay')) {
+        expect(calls.every((c) => c.headers['Idempotency-Key'] === undefined)).toBe(true);
+      } else if (s.method === 'POST') {
+        expect(new Set(calls.map((c) => c.headers['Idempotency-Key'])).size).toBe(1);
+        expect(calls[0]!.headers['Idempotency-Key']).toBeTruthy();
+      }
       if (s.idempotencyKey === 'auto') {
         expect(new Set(calls.map((c) => c.headers['Idempotency-Key'])).size).toBe(1);
         expect(calls[0]!.headers['Idempotency-Key']).toBeTruthy();

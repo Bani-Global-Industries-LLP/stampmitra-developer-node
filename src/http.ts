@@ -37,7 +37,7 @@ export interface RequestOptions {
   /** Per-attempt timeout in milliseconds. */
   timeout?: number;
   maxRetries?: number;
-  /** Overrides the auto-generated `Idempotency-Key`. Passing one on any POST also enables retries for it. */
+  /** Overrides the auto-generated `Idempotency-Key` (sent on every POST except webhook replay and reused across automatic retries). Passing one on webhook replay also enables retries for it. */
   idempotencyKey?: string;
   headers?: Record<string, string>;
   signal?: AbortSignal;
@@ -69,7 +69,10 @@ export interface RequestSpec {
   path: string;
   query?: object;
   body?: unknown;
-  /** Generate an `Idempotency-Key` automatically when the caller does not supply one. */
+  /**
+   * Every POST gets an auto-generated `Idempotency-Key` when the caller supplies none (the API honours
+   * it on every metered call). Set to `false` to opt out: only webhook replay does.
+   */
   autoIdempotency?: boolean;
 }
 
@@ -203,9 +206,10 @@ export class HttpClient {
     const timeout = opts.timeout ?? cfg.timeout;
     const url = `${cfg.baseUrl}${spec.path}${buildQuery(spec.query)}`;
 
-    // One key per logical call, reused on every automatic retry.
+    // One key per logical call, reused on every automatic retry. A caller-supplied key always wins.
     const idempotencyKey =
-      opts.idempotencyKey ?? (spec.autoIdempotency ? await uuidv4() : undefined);
+      opts.idempotencyKey ??
+      (spec.method === 'POST' && spec.autoIdempotency !== false ? await uuidv4() : undefined);
     const retrySafe = spec.method === 'GET' || idempotencyKey !== undefined;
 
     const headers: Record<string, string> = {
@@ -248,7 +252,8 @@ export class HttpClient {
           attempt: attempt + 1,
           error: err instanceof Error ? err.name : 'unknown',
         });
-        // Billed POSTs (no idempotency key) are retried only after a connection failure that
+        // Keyed requests (every POST except webhook replay, plus GET) retry on any connection error
+        // or timeout. An unkeyed POST (replay) is retried only after a connection failure that
         // happened before any response arrived; never after a timeout or a received response.
         const preResponseConnFailure =
           err instanceof ConnectionError && !(err instanceof TimeoutError) && err.beforeResponse;

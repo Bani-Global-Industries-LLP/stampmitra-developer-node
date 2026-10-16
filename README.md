@@ -84,6 +84,7 @@ That is all 31 operations of the API. Examples:
 
 ```ts
 // Verification (POST /v1/verify/*). Every call, including negative results, is billed.
+// Auto-keyed with an Idempotency-Key and retried safely (see Retries and idempotency).
 await client.verify.pan({ pan: 'ABCDE1234F' });
 await client.verify.gstin({ gstin: '07AAAAA1111A1Z1', businessName: 'Jane Doe Enterprises' });
 await client.verify.rc({ vehicleNumber: 'MH12AB1234' });
@@ -178,14 +179,17 @@ try {
 
 ## Retries and idempotency
 
-- Default `maxRetries: 2`, exponential backoff with full jitter (base 0.5s, cap 8s); `Retry-After` is honoured when sent.
+- Default `maxRetries: 2`, exponential backoff with full jitter (base 0.5s, cap 8s); `Retry-After` is honoured when sent
+  (the API itself sends none, so the jittered backoff is the normal path).
 - Retried: 429, 502, 503, 504, connection errors and timeouts.
 - `GET` is always retry-safe.
-- `POST /v1/orders`, `POST /v1/payments/intents` and `POST /v1/estamp/orders/{id}/parties` automatically send an
-  `Idempotency-Key` (UUIDv4, or your `idempotencyKey`), **reused across retries**, so they retry safely.
-- **Verification POSTs are billed and have no idempotency key.** They are never retried after a response was
-  received or after a timeout; the SDK retries them only if the connection failed before any response arrived.
-  Passing an explicit `idempotencyKey` to any other POST also enables retries for it.
+- **Every `POST` except webhook replay** (all verification calls, `estamp.calculateDuty`, `estamp.addParties`,
+  `orders.create`, `payments.intents.create`) automatically sends an `Idempotency-Key` (CSPRNG UUIDv4) when you
+  do not pass one, and **reuses the same key across automatic retries**. The API honours the key on every metered
+  call, so a retried verification is replayed rather than billed twice. A key you pass as `idempotencyKey` always wins.
+- `webhooks.events.replay` is never auto-keyed and is not retried after a response or a timeout (it is retried only
+  after a connection failure that happened before any response). Passing an explicit `idempotencyKey` enables
+  full retries for it.
 
 ## Pagination
 

@@ -3,7 +3,7 @@ import type * as T from '../types/verify.js';
 import * as v from '../validators.js';
 import { Resource } from './base.js';
 
-/** Identity & business verification. Every call, including negative results, is billed. These POSTs are never auto-retried. */
+/** Identity & business verification. Every call, including negative results, is billed. Every POST sends an auto-generated `Idempotency-Key` (or your `idempotencyKey`), reused across automatic retries on 429/502/503/504, timeouts and connection errors, so a retry is not charged twice. */
 export class Verify extends Resource {
   private post<R>(
     path: string,

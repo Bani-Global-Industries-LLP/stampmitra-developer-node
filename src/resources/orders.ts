@@ -11,10 +11,7 @@ export class Orders extends Resource {
       for (const f of ['externalOrderId', 'externalCustomerId', 'serviceCode']) {
         requireId(b[f] as string, f);
       }
-      return this.ctx.http.request(
-        { method: 'POST', path: '/v1/orders', body, autoIdempotency: true },
-        opts,
-      );
+      return this.ctx.http.request({ method: 'POST', path: '/v1/orders', body }, opts);
     } catch (err) {
       return rejectedAPIPromise(err);
     }
