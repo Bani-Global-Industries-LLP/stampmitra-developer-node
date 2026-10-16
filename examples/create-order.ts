@@ -14,4 +14,5 @@ const order = await client.orders.create(
   { idempotencyKey: 'my-request-id-0001' },
 );
 console.log(order);
-console.log(await client.orders.getStatus(String(order.id)));
+// Orders are addressed by the externalOrderId you supplied.
+console.log(await client.orders.getStatus(order.externalOrderId ?? 'ord_ext_123'));

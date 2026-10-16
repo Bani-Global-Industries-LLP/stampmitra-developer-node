@@ -175,7 +175,10 @@ function buildQuery(query?: object): string {
 }
 
 export class HttpClient {
-  constructor(readonly config: HttpConfig) {}
+  constructor(readonly config: HttpConfig) {
+    // Keep the key out of console.log / util.inspect / JSON.stringify of the client.
+    Object.defineProperty(config, 'apiKey', { enumerable: false });
+  }
 
   request<T>(spec: RequestSpec, opts: RequestOptions = {}): APIPromise<T> {
     return new APIPromise<T>(this.execute<T>(spec, opts));
@@ -346,6 +349,8 @@ export class HttpClient {
         headers,
         body,
         signal: controller.signal,
+        // Never follow redirects: the API does not redirect, and a redirect must not carry the key elsewhere.
+        redirect: 'error',
       });
       gotResponse = true;
       const text = await response.text();

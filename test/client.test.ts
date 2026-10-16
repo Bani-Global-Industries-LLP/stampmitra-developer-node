@@ -20,6 +20,41 @@ import pkg from '../package.json' with { type: 'json' };
 
 const PAN = { pan: 'ABCDE1234F' };
 
+describe('security hardening', () => {
+  const fetchOk = async () => new Response('{}');
+  it.each(['http://api.example.org', 'ftp://x.test', 'not a url', 'https://user:pw@api.test'])(
+    'rejects insecure/invalid baseUrl %s',
+    (baseUrl) => {
+      expect(() => new StampMitra({ apiKey: TEST_KEY, baseUrl, fetch: fetchOk })).toThrow(
+        StampMitraError,
+      );
+    },
+  );
+  it.each([
+    'http://localhost:4010',
+    'http://127.0.0.1:4010/',
+    'http://[::1]:4010',
+    'https://x.test/',
+  ])('accepts baseUrl %s', (baseUrl) => {
+    expect(() => new StampMitra({ apiKey: TEST_KEY, baseUrl, fetch: fetchOk })).not.toThrow();
+  });
+  it('never follows redirects', async () => {
+    let init: RequestInit | undefined;
+    const c = new StampMitra({
+      apiKey: TEST_KEY,
+      fetch: async (_u, i) => ((init = i), new Response('{}')),
+    });
+    await c.services.list();
+    expect(init?.redirect).toBe('error');
+  });
+  it('does not leak the API key via inspect/JSON', async () => {
+    const { inspect } = await import('node:util');
+    const c = new StampMitra({ apiKey: TEST_KEY, fetch: fetchOk });
+    expect(inspect(c, { depth: null })).not.toContain(TEST_KEY);
+    expect(JSON.stringify(c)).not.toContain(TEST_KEY);
+  });
+});
+
 describe('construction', () => {
   it('version matches package.json', () => expect(VERSION).toBe(pkg.version));
   it('requires a key', () => {

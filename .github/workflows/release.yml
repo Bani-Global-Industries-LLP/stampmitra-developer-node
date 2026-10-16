@@ -12,6 +12,10 @@ jobs:
       id-token: write # OIDC for npm trusted publishing + provenance
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: Bani-Global-Industries-LLP/stampmitra-developer-openapi
+          path: .spec-repo
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -21,6 +25,8 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
+        env:
+          STAMPMITRA_SPEC_DIR: ${{ github.workspace }}/.spec-repo
       - run: npm run build
       - name: Check tag matches package version
         run: test "v$(node -p "require('./package.json').version")" = "${GITHUB_REF_NAME}"

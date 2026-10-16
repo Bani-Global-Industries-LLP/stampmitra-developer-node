@@ -5,6 +5,17 @@ versioning: [SemVer](https://semver.org/) (pre-1.0: minor versions may contain b
 
 ## [Unreleased]
 
+### Changed
+
+- `baseUrl` must be `https` (plain `http` only for loopback); redirects are never followed; the API key is
+  non-enumerable so it does not appear in `console.log`/`util.inspect` of a client.
+- `Order` type reflects the API (`externalOrderId`, `createdAt`, `serviceCode`); `create-order` example fixed.
+
+### Added
+
+- `test/conformance/`: all 31 operations, error mapping, retry/idempotency sequences, pagination, webhook and
+  validator vectors over real HTTP against the spec repo's mock server (wired into CI).
+
 ## [0.1.0] - 2026-10-16
 
 ### Added

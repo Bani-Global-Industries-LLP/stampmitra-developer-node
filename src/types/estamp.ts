@@ -35,7 +35,10 @@ export interface OrderCreateParams {
   [key: string]: unknown;
 }
 export interface Order extends AnyObject {
-  id?: string;
+  /** The id you supplied; orders are addressed by it (`orders.get(externalOrderId)`). */
+  externalOrderId?: string;
+  createdAt?: string;
+  serviceCode?: string;
 }
 export type OrderStatus = AnyObject;
 export type OrderPayment = AnyObject;

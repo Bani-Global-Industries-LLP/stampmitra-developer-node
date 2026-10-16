@@ -48,6 +48,27 @@ export interface StampMitraOptions {
   random?: () => number;
 }
 
+/** The API key is sent as a bearer token, so the base URL must be https (plain http only for loopback). */
+function assertSecureBaseUrl(baseUrl: string): void {
+  let u: URL;
+  try {
+    u = new URL(baseUrl);
+  } catch {
+    throw new StampMitraError(`Invalid baseUrl: ${JSON.stringify(baseUrl)} is not a valid URL.`);
+  }
+  const host = u.hostname.replace(/^\[|\]$/g, '');
+  const loopback = host === 'localhost' || host === '127.0.0.1' || host === '::1';
+  if (u.protocol !== 'https:' && !(u.protocol === 'http:' && loopback)) {
+    throw new StampMitraError(
+      'baseUrl must use https (http is allowed only for localhost / 127.0.0.1 / ::1), ' +
+        'otherwise your API key would be sent unencrypted.',
+    );
+  }
+  if (u.username || u.password) {
+    throw new StampMitraError('baseUrl must not contain embedded credentials.');
+  }
+}
+
 function isBrowser(): boolean {
   const g = globalThis as Record<string, unknown>;
   return typeof g.window !== 'undefined' && typeof g.document !== 'undefined' && !g.Deno;
@@ -101,6 +122,7 @@ export class StampMitra {
       );
     }
     this.baseUrl = (options.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, '');
+    assertSecureBaseUrl(this.baseUrl);
     const http = new HttpClient({
       apiKey,
       baseUrl: this.baseUrl,

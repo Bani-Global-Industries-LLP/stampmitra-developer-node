@@ -3,3 +3,4 @@ node_modules
 coverage
 spec/openapi.json
 package-lock.json
+.spec-repo

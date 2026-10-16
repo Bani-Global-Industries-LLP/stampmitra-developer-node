@@ -16,6 +16,8 @@ Requires Node >= 18 (CI runs 18, 20, 22).
 - Zero runtime dependencies. Keep the core (`src/index.ts`, `src/webhooks.ts`) free of Node-only
   imports so it works on Cloudflare Workers, Deno and Bun. Node-only code lives in `src/webhooks-node.ts`.
 - Every API operation in `spec/openapi.json` needs an SDK method; `npm run coverage:spec` fails otherwise.
+- Conformance tests (`test/conformance/`) need a checkout of `stampmitra-developer-openapi`; set
+  `STAMPMITRA_SPEC_DIR=/path/to/it` (they are skipped when unset; CI always runs them).
 - Add tests for behaviour changes (mock `fetch` through the `fetch` client option).
 - Never log or commit real keys, PANs or other personal data.
 - Update `CHANGELOG.md` under "Unreleased".
