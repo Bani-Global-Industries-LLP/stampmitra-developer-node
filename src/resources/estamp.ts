@@ -42,7 +42,7 @@ export class Estamp extends Resource {
     );
   }
 
-  /** POST /v1/estamp/duty/calculate. Metered; not auto-retried unless you pass an `idempotencyKey`. */
+  /** POST /v1/estamp/duty/calculate. Metered. Sends an auto-generated `Idempotency-Key` (reused across retries). */
   calculateDuty(body: T.DutyCalculateParams, opts?: RequestOptions): APIPromise<T.DutyCalculation> {
     try {
       requireObject(body, 'body');
@@ -55,7 +55,7 @@ export class Estamp extends Resource {
     }
   }
 
-  /** POST /v1/estamp/orders/{orderId}/parties. Sends an auto-generated `Idempotency-Key`. */
+  /** POST /v1/estamp/orders/{orderId}/parties. Sends an auto-generated `Idempotency-Key` (reused across retries). */
   addParties(
     orderId: string,
     body: T.AddPartiesParams,
@@ -69,7 +69,6 @@ export class Estamp extends Resource {
           method: 'POST',
           path: `/v1/estamp/orders/${enc(id)}/parties`,
           body,
-          autoIdempotency: true,
         },
         opts,
       );

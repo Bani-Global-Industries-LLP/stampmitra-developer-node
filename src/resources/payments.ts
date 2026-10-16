@@ -8,10 +8,7 @@ export class PaymentIntents extends Resource {
   create(body: T.PaymentIntentCreateParams, opts?: RequestOptions): APIPromise<T.PaymentIntent> {
     try {
       requireObject(body, 'body');
-      return this.ctx.http.request(
-        { method: 'POST', path: '/v1/payments/intents', body, autoIdempotency: true },
-        opts,
-      );
+      return this.ctx.http.request({ method: 'POST', path: '/v1/payments/intents', body }, opts);
     } catch (err) {
       return rejectedAPIPromise(err);
     }

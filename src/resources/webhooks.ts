@@ -26,7 +26,7 @@ export class WebhookEvents extends Resource {
     return paginate<WebhookDelivery, WebhookEventListParams>((p) => this.list(p, opts), params);
   }
 
-  /** POST /v1/webhooks/events/{id}/replay. Re-fires the same payload; not auto-retried. */
+  /** POST /v1/webhooks/events/{id}/replay. Re-fires the same payload. Never auto-keyed and never auto-retried after a response (pass `idempotencyKey` to opt in to retries). */
   replay(id: string, opts?: RequestOptions): APIPromise<WebhookReplayResult> {
     try {
       return this.ctx.http.request(
@@ -34,6 +34,7 @@ export class WebhookEvents extends Resource {
           method: 'POST',
           path: `/v1/webhooks/events/${enc(requireId(id, 'id'))}/replay`,
           body: {},
+          autoIdempotency: false,
         },
         opts,
       );
