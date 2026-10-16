@@ -15,8 +15,45 @@ export const WEBHOOK_TIMESTAMP_HEADER = 'x-webhook-timestamp';
 export const WEBHOOK_EVENT_ID_HEADER = 'x-webhook-event-id';
 export const DEFAULT_TOLERANCE_SECONDS = 300;
 
-/** A delivered event body. The shape is defined by the event producer; unknown fields are kept. */
-export type WebhookEvent = Record<string, unknown>;
+/** Fields common to every delivered event; the event's own payload fields are spread alongside them. */
+export interface WebhookEventBase {
+  /** Internal order id the event is about. */
+  coreOrderId: string;
+  /** ISO 8601 time the event happened. */
+  occurredAt: string;
+  [key: string]: unknown;
+}
+
+export type WebhookEventType =
+  | 'ORDER_CREATED'
+  | 'PAYMENT_CONFIRMED'
+  | 'FULFILMENT_STARTED'
+  | 'FULFILMENT_COMPLETED'
+  | 'ORDER_FAILED'
+  | 'ORDER_CANCELLED'
+  | 'REFUND_COMPLETED'
+  | 'DOCUMENT_READY';
+
+type EventOf<T extends WebhookEventType> = WebhookEventBase & { coreEventType: T };
+export type OrderCreatedEvent = EventOf<'ORDER_CREATED'>; // webhook `order.created`
+export type OrderPaymentConfirmedEvent = EventOf<'PAYMENT_CONFIRMED'>; // `order.payment_confirmed`
+export type OrderFulfilmentStartedEvent = EventOf<'FULFILMENT_STARTED'>; // `order.fulfilment_started`
+export type OrderFulfilmentCompletedEvent = EventOf<'FULFILMENT_COMPLETED'>; // `order.fulfilment_completed`
+export type OrderFailedEvent = EventOf<'ORDER_FAILED'>; // `order.failed`
+export type OrderCancelledEvent = EventOf<'ORDER_CANCELLED'>; // `order.cancelled`
+export type OrderRefundCompletedEvent = EventOf<'REFUND_COMPLETED'>; // `order.refund_completed`
+export type OrderDocumentReadyEvent = EventOf<'DOCUMENT_READY'>; // `order.document_ready`
+
+/** A delivered event: discriminate on `coreEventType`. Extra per-event fields are kept (permissive). */
+export type WebhookEvent =
+  | OrderCreatedEvent
+  | OrderPaymentConfirmedEvent
+  | OrderFulfilmentStartedEvent
+  | OrderFulfilmentCompletedEvent
+  | OrderFailedEvent
+  | OrderCancelledEvent
+  | OrderRefundCompletedEvent
+  | OrderDocumentReadyEvent;
 
 export interface VerifyOptions {
   /** Max allowed clock skew in seconds (default 300). `Infinity` disables the freshness check. */

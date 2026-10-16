@@ -98,3 +98,18 @@ describe('webhook helpers', () => {
     ).toBe(false); // real clock: stale
   });
 });
+
+describe('typed events', () => {
+  it('discriminates on coreEventType', async () => {
+    const body = JSON.stringify({
+      coreOrderId: 'o',
+      coreEventType: 'DOCUMENT_READY',
+      occurredAt: 't',
+      documentId: 'd',
+    });
+    const sig = await edge.computeSignature('s', '100', body);
+    const evt = await edge.constructEvent(body, '100', sig, 's', { toleranceSeconds: Infinity });
+    if (evt.coreEventType === 'DOCUMENT_READY') expect(evt.documentId).toBe('d');
+    else expect.unreachable();
+  });
+});

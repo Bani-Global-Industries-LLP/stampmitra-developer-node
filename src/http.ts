@@ -105,12 +105,39 @@ export function rejectedAPIPromise<T>(err: unknown): APIPromise<T> {
   return new APIPromise<T>(p);
 }
 
-export function uuidv4(): string {
-  const c = (globalThis as { crypto?: Crypto }).crypto;
-  if (c && typeof c.randomUUID === 'function') return c.randomUUID();
-  const b = new Uint8Array(16);
-  if (c && typeof c.getRandomValues === 'function') c.getRandomValues(b);
-  else for (let i = 0; i < 16; i++) b[i] = Math.floor(Math.random() * 256);
+type CryptoLike = {
+  getRandomValues<T extends ArrayBufferView>(a: T): T;
+  randomUUID?: () => string;
+};
+
+/** Lazily loads Node's WebCrypto when there is no global `crypto` (Node 18). The specifier is indirect so edge bundlers never resolve it. */
+async function loadNodeCrypto(): Promise<CryptoLike | undefined> {
+  try {
+    const spec = 'node:crypto';
+    const mod = (await import(/* @vite-ignore */ spec)) as { webcrypto?: CryptoLike };
+    return mod.webcrypto;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * RFC 4122 v4 UUID from a CSPRNG. Never falls back to Math.random: if no CSPRNG exists, throws and
+ * asks the caller to supply `idempotencyKey` explicitly.
+ */
+export async function uuidv4(
+  loadFallback: () => Promise<CryptoLike | undefined> = loadNodeCrypto,
+): Promise<string> {
+  let c = (globalThis as { crypto?: CryptoLike }).crypto;
+  if (!c || typeof c.getRandomValues !== 'function') c = await loadFallback();
+  if (!c || typeof c.getRandomValues !== 'function') {
+    throw new StampMitraError(
+      'No cryptographically secure random source is available to generate an Idempotency-Key. ' +
+        'Pass `idempotencyKey` explicitly in the request options.',
+    );
+  }
+  if (typeof c.randomUUID === 'function') return c.randomUUID();
+  const b = c.getRandomValues(new Uint8Array(16));
   b[6] = ((b[6] ?? 0) & 0x0f) | 0x40;
   b[8] = ((b[8] ?? 0) & 0x3f) | 0x80;
   const h = Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
@@ -174,7 +201,8 @@ export class HttpClient {
     const url = `${cfg.baseUrl}${spec.path}${buildQuery(spec.query)}`;
 
     // One key per logical call, reused on every automatic retry.
-    const idempotencyKey = opts.idempotencyKey ?? (spec.autoIdempotency ? uuidv4() : undefined);
+    const idempotencyKey =
+      opts.idempotencyKey ?? (spec.autoIdempotency ? await uuidv4() : undefined);
     const retrySafe = spec.method === 'GET' || idempotencyKey !== undefined;
 
     const headers: Record<string, string> = {

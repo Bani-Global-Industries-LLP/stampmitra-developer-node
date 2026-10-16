@@ -436,3 +436,45 @@ describe('pagination', () => {
     expect(out).toHaveLength(2);
   });
 });
+
+describe('idempotency key CSPRNG', () => {
+  const orderBody = { externalOrderId: 'o1', externalCustomerId: 'c1', serviceCode: 'estamp.x' };
+  it('works without globalThis.crypto by loading node webcrypto', async () => {
+    vi.stubGlobal('crypto', undefined);
+    try {
+      const { client, calls } = makeClient([200]);
+      await client.orders.create(orderBody);
+      expect(calls[0]!.headers['Idempotency-Key']).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+  it('throws a clear error (no Math.random) when no CSPRNG exists', async () => {
+    const { uuidv4 } = await import('../src/http.js');
+    vi.stubGlobal('crypto', undefined);
+    const rnd = vi.spyOn(Math, 'random');
+    try {
+      await expect(uuidv4(async () => undefined)).rejects.toThrow(
+        /Pass `idempotencyKey` explicitly/,
+      );
+      expect(rnd).not.toHaveBeenCalled();
+    } finally {
+      rnd.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+  it('uses getRandomValues for a v4 UUID when randomUUID is absent', async () => {
+    const { uuidv4 } = await import('../src/http.js');
+    vi.stubGlobal('crypto', undefined);
+    const id = await uuidv4(async () => ({
+      getRandomValues: (a) => {
+        (a as unknown as Uint8Array).fill(0xff);
+        return a;
+      },
+    }));
+    vi.unstubAllGlobals();
+    expect(id).toBe('ffffffff-ffff-4fff-bfff-ffffffffffff');
+  });
+});
