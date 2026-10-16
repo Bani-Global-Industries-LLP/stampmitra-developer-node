@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM"],
+    "types": ["node"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "exactOptionalPropertyTypes": false,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "paths": {
+      "@stampmitra/sdk": ["./src/index.ts"],
+      "@stampmitra/sdk/webhooks": ["./src/webhooks.ts"],
+      "@stampmitra/sdk/webhooks-node": ["./src/webhooks-node.ts"]
+    },
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true
+  },
+  "include": ["src", "test", "examples", "scripts", "tsup.config.ts", "vitest.config.ts"]
+}

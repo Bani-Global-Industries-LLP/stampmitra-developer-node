@@ -1,0 +1,93 @@
+{
+  "name": "@stampmitra/sdk",
+  "version": "0.1.0",
+  "description": "Official Node.js / TypeScript SDK for the StampMitra Developer API (identity verification and e-Stamp).",
+  "license": "MIT",
+  "author": "StampMitra / Bani Global Industries LLP",
+  "homepage": "https://developer.stampmitra.in/docs",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Bani-Global-Industries-LLP/stampmitra-developer-node.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Bani-Global-Industries-LLP/stampmitra-developer-node/issues"
+  },
+  "keywords": [
+    "stampmitra",
+    "estamp",
+    "kyc",
+    "pan",
+    "gstin",
+    "verification",
+    "india",
+    "sdk"
+  ],
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./webhooks": {
+      "import": {
+        "types": "./dist/webhooks.d.ts",
+        "default": "./dist/webhooks.js"
+      },
+      "require": {
+        "types": "./dist/webhooks.d.cts",
+        "default": "./dist/webhooks.cjs"
+      }
+    },
+    "./webhooks-node": {
+      "import": {
+        "types": "./dist/webhooks-node.d.ts",
+        "default": "./dist/webhooks-node.js"
+      },
+      "require": {
+        "types": "./dist/webhooks-node.d.cts",
+        "default": "./dist/webhooks-node.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "SECURITY.md"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsup",
+    "lint": "eslint . && prettier --check .",
+    "format": "prettier --write .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "coverage:spec": "vitest run test/spec-coverage.test.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "@types/node": "^20.17.0",
+    "eslint": "^9.17.0",
+    "eslint-config-prettier": "^9.1.0",
+    "prettier": "^3.4.0",
+    "tsup": "^8.3.0",
+    "typescript": "^5.7.0",
+    "typescript-eslint": "^8.18.0",
+    "vitest": "^2.1.8"
+  }
+}
