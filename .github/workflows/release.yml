@@ -31,6 +31,10 @@ jobs:
       - name: Check tag matches package version
         run: test "v$(node -p "require('./package.json').version")" = "${GITHUB_REF_NAME}"
       # Inert until the maintainer sets the repository variable NPM_PUBLISH=true (see RELEASING.md).
+      # Trusted publishing (OIDC) needs npm >= 11.5.1; Node 22 ships npm 10.x.
+      - name: Upgrade npm for trusted publishing
+        if: ${{ vars.NPM_PUBLISH == 'true' }}
+        run: npm install -g npm@^11.5.1 && npm --version
       - name: Publish to npm (provenance)
         if: ${{ vars.NPM_PUBLISH == 'true' }}
         run: npm publish --provenance --access public
