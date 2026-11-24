@@ -189,16 +189,20 @@ describe('uploadOrderDocument (multipart)', () => {
     }
     expect(bodies[0]).not.toBe(bodies[1]); // fresh body per attempt
   });
-  it('uses a File name and type, and omits `type` when not given', async () => {
-    const { client, calls } = makeClient([201]);
-    await client.estamp.uploadOrderDocument('o', {
-      file: new File([new Uint8Array([1, 2])], 'scan.png', { type: 'image/png' }),
-    });
-    const fd = calls[0]!.body as unknown as FormData;
-    expect((fd.get('file') as File).name).toBe('scan.png');
-    expect((fd.get('file') as File).type).toBe('image/png');
-    expect(fd.has('type')).toBe(false);
-  });
+  // `File` is a global from Node 20; Node 18 has it only behind node:buffer.
+  it.skipIf(typeof File === 'undefined')(
+    'uses a File name and type, and omits `type` when not given',
+    async () => {
+      const { client, calls } = makeClient([201]);
+      await client.estamp.uploadOrderDocument('o', {
+        file: new File([new Uint8Array([1, 2])], 'scan.png', { type: 'image/png' }),
+      });
+      const fd = calls[0]!.body as unknown as FormData;
+      expect((fd.get('file') as File).name).toBe('scan.png');
+      expect((fd.get('file') as File).type).toBe('image/png');
+      expect(fd.has('type')).toBe(false);
+    },
+  );
   it('rejects a missing file locally', async () => {
     const { client, calls } = makeClient([201]);
     await expect(client.estamp.uploadOrderDocument('o', {} as never)).rejects.toBeInstanceOf(
