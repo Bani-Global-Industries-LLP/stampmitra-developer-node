@@ -5,8 +5,30 @@ export interface ErrorBody {
     message?: string;
     requestId?: string;
     field?: string;
+    details?: unknown;
     [key: string]: unknown;
   };
+  [key: string]: unknown;
+}
+
+/** One finding of a rejected e-Stamp order body: `error.details.errors[]`. */
+export interface FieldIssue {
+  /** Path of the offending input, e.g. `stamps[0].firstParty.name`. */
+  field?: string;
+  /** Stable machine code, e.g. `REQUIRED`, `MIXED_STATE`, `STATE_INACTIVE`. Branch on this. */
+  code: string;
+  message: string;
+  /** Zero-based index of the stamp line, when the finding is inside `stamps[i]`. */
+  index?: number;
+}
+
+/** Which wallet is short on a 402. */
+export type WalletName = 'STAMP_DUTY' | 'SERVICE_FEE';
+
+/** `error.details`: safe structured extras present on some errors. */
+export interface ErrorDetails {
+  errors?: FieldIssue[];
+  wallet?: WalletName;
   [key: string]: unknown;
 }
 
@@ -16,6 +38,8 @@ export interface StampMitraErrorOptions {
   requestId?: string;
   /** The parsed (or raw text) response body, if any. */
   raw?: unknown;
+  /** `error.details` from the response, if any. */
+  details?: ErrorDetails;
   cause?: unknown;
 }
 
@@ -29,6 +53,8 @@ export class StampMitraError extends Error {
   readonly requestId: string | undefined;
   /** Raw response body (parsed JSON when possible, otherwise text). */
   readonly raw: unknown;
+  /** `error.details` from the response (safe structured extras), when present. */
+  readonly details: ErrorDetails | undefined;
 
   constructor(message: string, options: StampMitraErrorOptions = {}) {
     super(message, options.cause !== undefined ? { cause: options.cause } : undefined);
@@ -37,6 +63,7 @@ export class StampMitraError extends Error {
     this.code = options.code;
     this.requestId = options.requestId;
     this.raw = options.raw;
+    this.details = options.details;
   }
 }
 
@@ -45,6 +72,8 @@ export class ValidationError extends StampMitraError {
   readonly field: string | undefined;
   /** `true` when raised by the SDK before any request was sent (nothing was billed). */
   readonly local: boolean;
+  /** `error.details.errors[]`: every finding of a rejected e-Stamp order body (empty when none). */
+  readonly fieldErrors: FieldIssue[];
   constructor(
     message: string,
     options: StampMitraErrorOptions & { field?: string; local?: boolean } = {},
@@ -52,13 +81,19 @@ export class ValidationError extends StampMitraError {
     super(message, options);
     this.field = options.field;
     this.local = options.local ?? false;
+    this.fieldErrors = options.details?.errors ?? [];
   }
 }
 
 /** 401: missing, malformed or revoked API key. */
 export class AuthenticationError extends StampMitraError {}
 /** 402: insufficient wallet balance. */
-export class PaymentRequiredError extends StampMitraError {}
+export class PaymentRequiredError extends StampMitraError {
+  /** On e-Stamp order creation: which wallet is short (`error.details.wallet`). Top up that wallet, then send a new request. */
+  get wallet(): WalletName | undefined {
+    return this.details?.wallet;
+  }
+}
 /** 403: key valid but lacks scope / IP allowlist. The server message is surfaced verbatim. */
 export class PermissionError extends StampMitraError {}
 /** 404 */
@@ -117,7 +152,24 @@ export function errorFromResponse(
     (env && typeof env.message === 'string' && env.message) ||
     (typeof body === 'string' && body.trim().slice(0, 300)) ||
     `Request failed with status ${status}`;
+  const rawDetails = env && env.details;
+  let details: ErrorDetails | undefined;
+  if (rawDetails && typeof rawDetails === 'object' && !Array.isArray(rawDetails)) {
+    const d = rawDetails as Record<string, unknown>;
+    details = { ...d };
+    if (Array.isArray(d.errors)) {
+      details.errors = d.errors.filter(
+        (i): i is FieldIssue =>
+          !!i &&
+          typeof i === 'object' &&
+          typeof (i as FieldIssue).code === 'string' &&
+          typeof (i as FieldIssue).message === 'string',
+      );
+    } else delete details.errors;
+    if (d.wallet !== 'STAMP_DUTY' && d.wallet !== 'SERVICE_FEE') delete details.wallet;
+  }
   const opts: StampMitraErrorOptions = {
+    details,
     status,
     code: env && typeof env.code === 'string' ? env.code : undefined,
     requestId:

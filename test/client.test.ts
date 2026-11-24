@@ -128,8 +128,8 @@ describe('requests', () => {
     expect(c.headers.Authorization).toBe(`Bearer ${TEST_KEY}`);
     expect(c.headers['Content-Type']).toBe('application/json');
     expect(c.headers.Accept).toBe('application/json');
-    expect(c.headers['User-Agent']).toMatch(
-      /^stampmitra-node\/0\.1\.0 \(node\/[\d.]+\) myapp\/2\.0$/,
+    expect(c.headers['User-Agent']).toBe(
+      `stampmitra-node/${pkg.version} (node/${process.versions.node}) myapp/2.0`,
     );
     expect(JSON.parse(c.body!)).toEqual({ pan: 'ABCDE1234F', name: 'Rahul' });
     expect(c.headers['Idempotency-Key']).toMatch(/^[0-9a-f-]{36}$/);
@@ -356,17 +356,18 @@ describe('idempotency', () => {
     expect(c.calls).toHaveLength(1);
     expect(c.calls[0]!.headers['Idempotency-Key']).toBeUndefined();
   });
-  it('replay never carries an auto key, even on a pre-response connection retry', async () => {
+  it('replay is never auto-retried, even after a pre-response connection failure', async () => {
     const { client, calls } = makeClient(['connection_error', 200]);
-    await client.webhooks.events.replay('e1');
-    expect(calls).toHaveLength(2);
+    await expect(client.webhooks.events.replay('e1')).rejects.toBeInstanceOf(ConnectionError);
+    expect(calls).toHaveLength(1);
     expect(calls.every((c) => c.headers['Idempotency-Key'] === undefined)).toBe(true);
   });
-  it('an explicit key on replay is sent and enables retries', async () => {
+  it('an explicit key on replay is sent but still never enables retries', async () => {
     const { client, calls } = makeClient([503, 200]);
-    await client.webhooks.events.replay('e1', { idempotencyKey: 'k' });
-    expect(calls).toHaveLength(2);
-    expect(calls.map((c) => c.headers['Idempotency-Key'])).toEqual(['k', 'k']);
+    await expect(
+      client.webhooks.events.replay('e1', { idempotencyKey: 'k' }),
+    ).rejects.toBeInstanceOf(UpstreamError);
+    expect(calls.map((c) => c.headers['Idempotency-Key'])).toEqual(['k']);
   });
   it('a caller-supplied key on a verification POST is preserved across retries', async () => {
     const { client, calls } = makeClient([503, 200]);
