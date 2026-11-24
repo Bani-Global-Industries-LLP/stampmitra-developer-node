@@ -10,12 +10,14 @@ import {
   type Logger,
 } from './http.js';
 import type { Context } from './resources/base.js';
+import { Account } from './resources/account.js';
 import { Estamp } from './resources/estamp.js';
 import { Logs } from './resources/logs.js';
 import { Orders } from './resources/orders.js';
 import { Payments } from './resources/payments.js';
 import { Services } from './resources/services.js';
 import { Usage } from './resources/usage.js';
+import { ServiceFeeWallet, StampDutyWallet } from './resources/wallets.js';
 import { Verify } from './resources/verify.js';
 import { Webhooks } from './resources/webhooks.js';
 
@@ -85,6 +87,9 @@ export class StampMitra {
   readonly usage: Usage;
   readonly logs: Logs;
   readonly webhooks: Webhooks;
+  readonly stampDutyWallet: StampDutyWallet;
+  readonly serviceFeeWallet: ServiceFeeWallet;
+  readonly account: Account;
 
   constructor(options: StampMitraOptions = {}) {
     const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process
@@ -144,6 +149,9 @@ export class StampMitra {
     this.usage = new Usage(ctx);
     this.logs = new Logs(ctx);
     this.webhooks = new Webhooks(ctx);
+    this.stampDutyWallet = new StampDutyWallet(ctx);
+    this.serviceFeeWallet = new ServiceFeeWallet(ctx);
+    this.account = new Account(ctx);
   }
 
   /** Never serialises the key. */

@@ -40,6 +40,37 @@ async function sdkOps(): Promise<Set<string>> {
     () => c.estamp.listArticles('I'),
     () => c.estamp.calculateDuty({}),
     () => c.estamp.addParties('O', {}),
+    () => c.estamp.getStatesAvailability(),
+    () => c.estamp.getState('MH'),
+    () => c.estamp.getStateRequirements('MH', { articleCode: 'A', denomination: 500 }),
+    () => c.estamp.listDistricts('MH'),
+    () => c.estamp.listSros('MH', 'D1'),
+    () => c.estamp.validateOrder({ stamps: [] }),
+    () => c.estamp.createOrder({ stamps: [] }),
+    () => c.estamp.listOrders(),
+    () => c.estamp.getOrder('o'),
+    () => c.estamp.cancelOrder('o'),
+    () => c.estamp.exportOrder('o'),
+    () => c.estamp.listOrderStamps('o'),
+    () => c.estamp.uploadOrderDocument('o', { file: new Uint8Array([1]) }),
+    () => c.estamp.getStamp('s'),
+    () => c.estamp.cancelStamp('s'),
+    () => c.estamp.replaceStamp('s'),
+    () => c.estamp.setStampPanCard('s', { panCardImage: 'https://x.example/p.png' }),
+    () => c.estamp.getStampCertificate('s'),
+    () => c.estamp.getWallet(),
+    () => c.stampDutyWallet.getBalance(),
+    () => c.stampDutyWallet.topup({ baseAmount: 1 }),
+    () => c.stampDutyWallet.listTransactions(),
+    () => c.stampDutyWallet.listInvoices(),
+    () => c.stampDutyWallet.getInvoice('i'),
+    () => c.serviceFeeWallet.getBalance(),
+    () => c.serviceFeeWallet.topup({ baseAmount: 1 }),
+    () => c.serviceFeeWallet.listTransactions(),
+    () => c.serviceFeeWallet.listInvoices(),
+    () => c.serviceFeeWallet.getInvoice('i'),
+    () => c.account.getBalance(),
+    () => c.account.getUsage(),
     () => c.orders.create({ externalOrderId: 'a', externalCustomerId: 'b', serviceCode: 'c' }),
     () => c.orders.get('O'),
     () => c.orders.getStatus('O'),
@@ -70,7 +101,7 @@ async function sdkOps(): Promise<Set<string>> {
 
 describe('spec coverage (spec/openapi.json)', () => {
   it('has the expected number of operations in the snapshot', () => {
-    expect(specOps.length).toBe(31);
+    expect(specOps.length).toBe(62);
   });
   it('every spec METHOD+path has an SDK method', async () => {
     const hit = await sdkOps();
