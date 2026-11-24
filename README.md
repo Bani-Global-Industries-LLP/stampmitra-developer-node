@@ -8,7 +8,7 @@ Official Node.js / TypeScript SDK for the [StampMitra Developer API](https://dev
 Indian identity verification (PAN, GSTIN, RC, Voter ID, Driving Licence, Passport, CIN, Udyam, bank account)
 and e-Stamp. Zero runtime dependencies, dual ESM/CJS, fully typed.
 
-> **Status: pre-1.0 (0.1.0).** The API surface may change in minor releases until 1.0. The npm badge
+> **Status: pre-1.0 (0.2.0).** The API surface may change in minor releases until 1.0. The npm badge
 > above shows a version only once the package is published; until then it (and `npm install`) will 404.
 
 Docs: <https://developer.stampmitra.in/sdks/node> | API reference: <https://developer.stampmitra.in/docs>
@@ -69,18 +69,21 @@ Every method also accepts per-request options as its last argument:
 
 ## Resources
 
-| Namespace                 | Methods                                                                                                                             |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `client.verify`           | `pan`, `gstin`, `rc`, `voterId`, `drivingLicense`, `passport`, `cin`, `udyam`, `panToGstin`, `panToUdyam`, `bankAccount`            |
-| `client.services`         | `list`, `get`                                                                                                                       |
-| `client.estamp`           | `getSchema`, `listStates`, `listInstruments`, `listArticles`, `calculateDuty`, `addParties`                                         |
-| `client.orders`           | `create`, `get`, `getStatus`, `getPayment`, `listDocuments`, `getDocumentDownload` (orders are addressed by your `externalOrderId`) |
-| `client.payments.intents` | `create`, `get`                                                                                                                     |
-| `client.usage`            | `summary`                                                                                                                           |
-| `client.logs`             | `list`, `listAll`                                                                                                                   |
-| `client.webhooks.events`  | `list`, `listAll`, `replay`                                                                                                         |
+| Namespace                 | Methods                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `client.verify`           | `pan`, `gstin`, `rc`, `voterId`, `drivingLicense`, `passport`, `cin`, `udyam`, `panToGstin`, `panToUdyam`, `bankAccount`                                                                                                                                                                                                                                                                                                                                              |
+| `client.services`         | `list`, `get`                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `client.estamp`           | catalogue: `getSchema`, `listStates`, `getStatesAvailability`, `getState`, `getStateRequirements`, `listDistricts`, `listSros`, `listInstruments`, `listArticles`, `calculateDuty`, `addParties`; orders: `validateOrder`, `createOrder`, `listOrders`, `listAllOrders`, `getOrder`, `cancelOrder`, `exportOrder`, `listOrderStamps`, `uploadOrderDocument`; stamps: `getStamp`, `cancelStamp`, `replaceStamp`, `setStampPanCard`, `getStampCertificate`; `getWallet` |
+| `client.orders`           | `create`, `get`, `getStatus`, `getPayment`, `listDocuments`, `getDocumentDownload` (orders are addressed by your `externalOrderId`)                                                                                                                                                                                                                                                                                                                                   |
+| `client.payments.intents` | `create`, `get`                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `client.stampDutyWallet`  | `getBalance`, `topup`, `listTransactions`, `listAllTransactions`, `listInvoices`, `listAllInvoices`, `getInvoice`                                                                                                                                                                                                                                                                                                                                                     |
+| `client.serviceFeeWallet` | the same seven methods                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `client.account`          | `getBalance`, `getUsage`                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `client.usage`            | `summary`                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `client.logs`             | `list`, `listAll`                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `client.webhooks.events`  | `list`, `listAll`, `replay`                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 
-That is all 31 operations of the API. Examples:
+That is all 62 operations of the API (contract 1.2.0). Examples:
 
 ```ts
 // Verification (POST /v1/verify/*). Every call, including negative results, is billed.
@@ -149,21 +152,114 @@ console.log(
 );
 ```
 
+## e-Stamp
+
+The typed order flow: validate, create (with an idempotency key), upload the payer's PAN card, list the stamps,
+fetch the certificate. A runnable version is in [`examples/estamp-order.ts`](examples/estamp-order.ts).
+
+```ts
+import { readFile } from 'node:fs/promises';
+import { StampMitra, PaymentRequiredError, ValidationError } from '@stampmitra/sdk';
+
+const client = new StampMitra();
+
+const body = {
+  reference: 'lease-2026-0412',
+  stamps: [
+    {
+      clientReference: 'line-1',
+      state: 'MH',
+      articleCode: 'ART1', // from client.estamp.listInstruments('MH')
+      denomination: 500,
+      stampDutyPayer: 'FIRST_PARTY',
+      firstParty: { name: 'Jane Doe', address: '12 MG Road, Pune' }, // a bare name string also works
+      secondParty: 'John Smith',
+      propertyArea: { unit: 'Square Feet', value: 850 },
+    },
+  ],
+};
+
+// 1. Dry run: nothing is saved or charged. `quote` holds the priced totals (never recalculate them).
+const check = await client.estamp.validateOrder(body);
+if (!check.valid) throw new Error(JSON.stringify(check.errors));
+
+// 2. Create. An Idempotency-Key is REQUIRED by the API; the SDK generates one if you pass none. For an
+//    order that spends money, derive it from something stable you own and persist it before sending.
+let order;
+try {
+  order = await client.estamp.createOrder(body, { idempotencyKey: 'lease-2026-0412-v1' });
+} catch (err) {
+  if (err instanceof PaymentRequiredError)
+    console.error('Top up the wallet:', err.wallet); // STAMP_DUTY | SERVICE_FEE
+  else if (err instanceof ValidationError) console.error(err.fieldErrors); // [{ field, code, message, index }]
+  throw err;
+}
+
+// 3. Optional: the payer's PAN card (PDF, JPEG or PNG, up to 10 MB), as multipart/form-data.
+await client.estamp.uploadOrderDocument(order.id, {
+  file: new Blob([await readFile('pan.pdf')], { type: 'application/pdf' }),
+  fileName: 'pan.pdf',
+});
+
+// 4. The stamps of the order, then a certificate once it has been delivered.
+const { items } = await client.estamp.listOrderStamps(order.id);
+const cert = await client.estamp.getStampCertificate(items[0]!.id);
+if (cert.available) console.log(cert.certificateNumber, cert.downloadUrl); // download promptly (5 minutes)
+```
+
+Notes:
+
+- **The PAN card is advisory.** It never blocks an order. Send `panCardImage` (an https link) on a stamp line, upload
+  the file with `uploadOrderDocument`, or send a link later with `setStampPanCard(stampId, { panCardImage })` (answers
+  202; read `panCard.status` from `getStamp`).
+- **Parties.** `firstParty` and `secondParty` take a name string or an `EstampParty` object
+  (`name`, `address`, `phone`, `fatherHusbandName`, `gender: 'MALE' | 'FEMALE' | 'OTHER'`). Use the object when
+  the state wants an address or a father's/husband's name (`getState`, `getStateRequirements` tell you).
+- **Limits.** One order covers one state; up to 5000 stamp lines; `quantity` up to 1000 per line.
+  `propertyArea` is `{ unit: 'Square Feet' | 'Square Yard' | 'Square Meters' | 'Not Applicable', value }`.
+  `getStateRequirements(state, { articleCode, denomination, category })` returns an `exampleBody` you can send to
+  `validateOrder`.
+- Orders are created pending review (`status` is a pre-placement status such as `PENDING_REVIEW`). Cancel with
+  `cancelOrder` / `cancelStamp`; a 409 means it can no longer be cancelled.
+- Pass `idempotencyKey` yourself for `createOrder`. A key the SDK generates is reused across its own automatic retries,
+  but a second `createOrder` call made by you after an unknown outcome would get a new key; use `listOrders` (your
+  `reference` is on each order) to resolve an unknown outcome.
+
+### Wallets
+
+Orders debit two prepaid wallets: the **Stamp Duty Wallet** (statutory duty) and the **Service Fee Wallet**
+(procurement and API charges, net of GST). `client.estamp.getWallet()` reads both; `client.stampDutyWallet` and
+`client.serviceFeeWallet` have `getBalance`, `topup`, `listTransactions`, `listInvoices` and `getInvoice`. Balances
+are decimal strings: parse them. Wallet routes need wallet scopes on your key (ask support if you get 401/403).
+
+```ts
+const t = await client.stampDutyWallet.topup({ baseAmount: 1000 });
+// Checkout the Razorpay order t.razorpayOrderId, charging t.totalCharged.
+console.log(t.processingFeeAmount, t.gstAmount, t.totalCharged, t.creditAmount);
+```
+
+A Stamp Duty top-up adds a 6% processing fee on top, plus 18% GST on that fee; the wallet is credited the amount you
+add (`creditAmount`), and a GST tax invoice for the fee is available from `stampDutyWallet.listInvoices()` /
+`getInvoice(topupId)`. Fees can change: show your payer the figures from the response and do not compute them in
+your code. In a Stamp Duty top-up response `baseAmount`, `gstAmount` and `totalCharged` are JSON numbers while
+`processingFeePercent`, `processingFeeAmount` and `creditAmount` are strings; Service Fee top-up amounts are all
+strings. `client.account.getBalance()` / `getUsage()` read your verification wallet balance and usage.
+
 ## Error handling
 
-All errors extend `StampMitraError` (`status`, `code`, `message`, `requestId`, `raw`).
+All errors extend `StampMitraError` (`status`, `code`, `message`, `requestId`, `raw`, `details`).
 
-| HTTP                      | Class                                                                   |
-| ------------------------- | ----------------------------------------------------------------------- |
-| 400 / 422                 | `ValidationError` (`field`)                                             |
-| 401                       | `AuthenticationError`                                                   |
-| 402                       | `PaymentRequiredError`                                                  |
-| 403                       | `PermissionError` (server message verbatim, e.g. IP allowlist required) |
-| 404                       | `NotFoundError`                                                         |
-| 409                       | `ConflictError`                                                         |
-| 429                       | `RateLimitError` (`retryAfter` seconds, when the server sends it)       |
-| 5xx                       | `UpstreamError`                                                         |
-| network / timeout / abort | `ConnectionError` / `TimeoutError` / `RequestAbortedError`              |
+| HTTP                      | Class                                                                                                        |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| 400 / 422                 | `ValidationError` (`field`, `fieldErrors`: `error.details.errors[]` items `{ field, code, message, index }`) |
+| 401                       | `AuthenticationError`                                                                                        |
+| 402                       | `PaymentRequiredError` (`wallet`: `STAMP_DUTY` or `SERVICE_FEE` on e-Stamp order creation)                   |
+| 403                       | `PermissionError` (server message verbatim, e.g. IP allowlist required)                                      |
+| 404                       | `NotFoundError`                                                                                              |
+| 409                       | `ConflictError`                                                                                              |
+| 429                       | `RateLimitError` (`retryAfter` seconds, when the server sends it)                                            |
+| 5xx                       | `UpstreamError`                                                                                              |
+| network / timeout / abort | `ConnectionError` / `TimeoutError` / `RequestAbortedError`                                                   |
 
 Errors are mapped by status only, so non-JSON error bodies still produce the right class.
 
@@ -179,17 +275,18 @@ try {
 
 ## Retries and idempotency
 
-- Default `maxRetries: 2`, exponential backoff with full jitter (base 0.5s, cap 8s); `Retry-After` is honoured when sent
-  (the API itself sends none, so the jittered backoff is the normal path).
-- Retried: 429, 502, 503, 504, connection errors and timeouts.
-- `GET` is always retry-safe.
-- **Every `POST` except webhook replay** (all verification calls, `estamp.calculateDuty`, `estamp.addParties`,
-  `orders.create`, `payments.intents.create`) automatically sends an `Idempotency-Key` (CSPRNG UUIDv4) when you
+- Default `maxRetries: 2`, exponential backoff with full jitter (base 0.5s, cap 8s). `Retry-After` (seconds) is honoured
+  on 429, 503 and 409 `IDEMPOTENCY_IN_PROGRESS` (capped at 60s per wait); the jittered backoff applies when it is absent.
+- Retried: 429, 502, 503, 504, 409 `IDEMPOTENCY_IN_PROGRESS` (keyed requests only), connection errors and timeouts.
+  Any other 409 is a state conflict and is never retried.
+- `GET` is always retry-safe. `estamp.validateOrder` is a dry run (no key, nothing charged) and is retried too.
+- **Never auto-retried:** `estamp.cancelOrder`, `estamp.cancelStamp`, `estamp.replaceStamp`, `estamp.setStampPanCard`,
+  both wallets' `topup`, and `webhooks.events.replay`. They are not auto-keyed either; a 429's `retryAfter` is on the error.
+- **Every other `POST`** (all verification calls, `estamp.calculateDuty`, `estamp.addParties`, `estamp.createOrder`,
+  `estamp.uploadOrderDocument`, `orders.create`, `payments.intents.create`) automatically sends an `Idempotency-Key` (CSPRNG UUIDv4) when you
   do not pass one, and **reuses the same key across automatic retries**. The API honours the key on every metered
   call, so a retried verification is replayed rather than billed twice. A key you pass as `idempotencyKey` always wins.
-- `webhooks.events.replay` is never auto-keyed and is not retried after a response or a timeout (it is retried only
-  after a connection failure that happened before any response). Passing an explicit `idempotencyKey` enables
-  full retries for it.
+- A multipart upload is re-built (the whole file re-sent) on every retry, with the same key.
 
 ## Pagination
 
@@ -256,6 +353,8 @@ Per-call rates by plan, in rupees, excluding 18% GST:
 | White-label and custom domain | No        | No            | No           | Yes            | No                                    | Yes        |
 
 Growth and Scale are also available yearly (₹9,990 and ₹49,990, two months free). There are separate Startup and NGO programmes. Plans, rates and limits can change, and [developer.stampmitra.in/pricing](https://developer.stampmitra.in/pricing) is the source of truth; see it for how an e-Stamp order is priced in total.
+
+API e-Stamp orders are charged per paper as a procurement charge plus an API charge (ex-GST); see the pricing page for current rates.
 
 ## Development
 
