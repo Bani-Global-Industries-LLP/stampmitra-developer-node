@@ -37,7 +37,7 @@ export interface RequestOptions {
   /** Per-attempt timeout in milliseconds. */
   timeout?: number;
   maxRetries?: number;
-  /** Overrides the auto-generated `Idempotency-Key` (sent on every POST except webhook replay and reused across automatic retries). Passing one on webhook replay also enables retries for it. */
+  /** Overrides the auto-generated `Idempotency-Key` (sent on POSTs that support it and reused across automatic retries). Routes that are never auto-retried (cancel, replace, PAN card link, wallet top-up, webhook replay) are not auto-keyed. */
   idempotencyKey?: string;
   headers?: Record<string, string>;
   signal?: AbortSignal;
@@ -69,6 +69,14 @@ export interface RequestSpec {
   path: string;
   query?: object;
   body?: unknown;
+  /** multipart/form-data body. Called once per attempt so every retry re-sends a fresh body. */
+  form?: () => FormData;
+  /**
+   * `auto` (default): GET is retry-safe; a POST is retried only when it carries an Idempotency-Key.
+   * `safe`: retried even without a key (a dry run such as order validation).
+   * `never`: never automatically retried (cancel, replace, PAN card link, wallet top-up, webhook replay).
+   */
+  retry?: 'auto' | 'safe' | 'never';
   /**
    * Every POST gets an auto-generated `Idempotency-Key` when the caller supplies none (the API honours
    * it on every metered call). Set to `false` to opt out: only webhook replay does.
@@ -210,18 +218,22 @@ export class HttpClient {
     const idempotencyKey =
       opts.idempotencyKey ??
       (spec.method === 'POST' && spec.autoIdempotency !== false ? await uuidv4() : undefined);
-    const retrySafe = spec.method === 'GET' || idempotencyKey !== undefined;
+    const mode = spec.retry ?? 'auto';
+    const retrySafe =
+      mode === 'never'
+        ? false
+        : mode === 'safe' || spec.method === 'GET' || idempotencyKey !== undefined;
 
     const headers: Record<string, string> = {
       Accept: 'application/json',
-      'Content-Type': 'application/json',
+      ...(spec.form ? {} : { 'Content-Type': 'application/json' }),
       'User-Agent': buildUserAgent(cfg.appInfo),
       ...cfg.defaultHeaders,
       Authorization: `Bearer ${cfg.apiKey}`,
       ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
       ...opts.headers,
     };
-    const body = spec.body === undefined ? undefined : JSON.stringify(spec.body);
+    const jsonBody = spec.body === undefined ? undefined : JSON.stringify(spec.body);
 
     for (let attempt = 0; ; attempt++) {
       const canRetry = retrySafe && attempt < maxRetries;
@@ -230,7 +242,12 @@ export class HttpClient {
         url,
         attempt: attempt + 1,
         headers: redactHeaders(headers),
-        body: spec.body === undefined ? undefined : redactBody(spec.body),
+        // Multipart: only the part names, never file names or contents.
+        body: spec.form
+          ? '[multipart/form-data]'
+          : spec.body === undefined
+            ? undefined
+            : redactBody(spec.body),
       });
       const started = Date.now();
       let response: Response;
@@ -240,7 +257,7 @@ export class HttpClient {
           url,
           spec.method,
           headers,
-          body,
+          spec.form ? spec.form() : jsonBody,
           timeout,
           opts.signal,
         ));
@@ -256,7 +273,10 @@ export class HttpClient {
         // or timeout. An unkeyed POST (replay) is retried only after a connection failure that
         // happened before any response arrived; never after a timeout or a received response.
         const preResponseConnFailure =
-          err instanceof ConnectionError && !(err instanceof TimeoutError) && err.beforeResponse;
+          err instanceof ConnectionError &&
+          !(err instanceof TimeoutError) &&
+          err.beforeResponse &&
+          mode !== 'never';
         if (attempt < maxRetries && (retrySafe || preResponseConnFailure)) {
           await this.sleepBackoff(attempt, undefined, opts.signal);
           continue;
@@ -299,7 +319,15 @@ export class HttpClient {
         };
       }
 
-      if (canRetry && RETRYABLE_STATUS.has(response.status)) {
+      // 409 IDEMPOTENCY_IN_PROGRESS: the first request with this key is still running; resend the identical
+      // request after Retry-After. Any other 409 is a state conflict and is never retried.
+      const inProgress =
+        response.status === 409 &&
+        idempotencyKey !== undefined &&
+        mode !== 'never' &&
+        (parsed as { error?: { code?: string } } | undefined)?.error?.code ===
+          'IDEMPOTENCY_IN_PROGRESS';
+      if (canRetry && (RETRYABLE_STATUS.has(response.status) || inProgress)) {
         await this.sleepBackoff(
           attempt,
           parseRetryAfter(response.headers.get('retry-after')),
@@ -332,7 +360,7 @@ export class HttpClient {
     url: string,
     method: string,
     headers: Record<string, string>,
-    body: string | undefined,
+    body: string | FormData | undefined,
     timeoutMs: number,
     userSignal?: AbortSignal,
   ): Promise<{ response: Response; text: string }> {
