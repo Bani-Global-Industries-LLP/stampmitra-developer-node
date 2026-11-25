@@ -1,6 +1,6 @@
 {
   "name": "@stampmitra/sdk",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Official Node.js / TypeScript SDK for the StampMitra Developer API (identity verification and e-Stamp).",
   "license": "MIT",
   "author": "StampMitra / Bani Global Industries LLP",
