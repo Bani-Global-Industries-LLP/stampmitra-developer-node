@@ -8,7 +8,7 @@ Official Node.js / TypeScript SDK for the [StampMitra Developer API](https://dev
 Indian identity verification (PAN, GSTIN, RC, Voter ID, Driving Licence, Passport, CIN, Udyam, bank account)
 and e-Stamp. Zero runtime dependencies, dual ESM/CJS, fully typed.
 
-> **Status: pre-1.0 (0.2.0).** The API surface may change in minor releases until 1.0. The npm badge
+> **Status: pre-1.0 (0.2.1).** The API surface may change in minor releases until 1.0. The npm badge
 > above shows a version only once the package is published; until then it (and `npm install`) will 404.
 
 Docs: <https://developer.stampmitra.in/sdks/node> | API reference: <https://developer.stampmitra.in/docs>
@@ -76,8 +76,8 @@ Every method also accepts per-request options as its last argument:
 | `client.estamp`           | catalogue: `getSchema`, `listStates`, `getStatesAvailability`, `getState`, `getStateRequirements`, `listDistricts`, `listSros`, `listInstruments`, `listArticles`, `calculateDuty`, `addParties`; orders: `validateOrder`, `createOrder`, `listOrders`, `listAllOrders`, `getOrder`, `cancelOrder`, `exportOrder`, `listOrderStamps`, `uploadOrderDocument`; stamps: `getStamp`, `cancelStamp`, `replaceStamp`, `setStampPanCard`, `getStampCertificate`; `getWallet` |
 | `client.orders`           | `create`, `get`, `getStatus`, `getPayment`, `listDocuments`, `getDocumentDownload` (orders are addressed by your `externalOrderId`)                                                                                                                                                                                                                                                                                                                                   |
 | `client.payments.intents` | `create`, `get`                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| `client.stampDutyWallet`  | `getBalance`, `topup`, `listTransactions`, `listAllTransactions`, `listInvoices`, `listAllInvoices`, `getInvoice`                                                                                                                                                                                                                                                                                                                                                     |
-| `client.serviceFeeWallet` | the same seven methods                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `client.stampDutyWallet`  | the Stamp duty wallet: `getBalance`, `topup`, `listTransactions`, `listAllTransactions`, `listInvoices`, `listAllInvoices`, `getInvoice`                                                                                                                                                                                                                                                                                                                              |
+| `client.serviceFeeWallet` | the Service wallet (name kept for compatibility): the same seven methods                                                                                                                                                                                                                                                                                                                                                                                              |
 | `client.account`          | `getBalance`, `getUsage`                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `client.usage`            | `summary`                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `client.logs`             | `list`, `listAll`                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
@@ -195,7 +195,8 @@ try {
   throw err;
 }
 
-// 3. Optional: the payer's PAN card (PDF, JPEG or PNG, up to 10 MB), as multipart/form-data.
+// 3. The payer's PAN card (PDF, JPEG or PNG, up to 10 MB), as multipart/form-data. Not needed to place the
+//    order, but mandatory to complete the stamp.
 await client.estamp.uploadOrderDocument(order.id, {
   file: new Blob([await readFile('pan.pdf')], { type: 'application/pdf' }),
   fileName: 'pan.pdf',
@@ -209,9 +210,10 @@ if (cert.available) console.log(cert.certificateNumber, cert.downloadUrl); // do
 
 Notes:
 
-- **The PAN card is advisory.** It never blocks an order. Send `panCardImage` (an https link) on a stamp line, upload
-  the file with `uploadOrderDocument`, or send a link later with `setStampPanCard(stampId, { panCardImage })` (answers
-  202; read `panCard.status` from `getStamp`).
+- **The PAN card.** You can place an order without `panCardImage`, but a PAN card is mandatory to complete the stamp.
+  Send `panCardImage` (an https link) on a stamp line, upload the file with `uploadOrderDocument`, or send a link later
+  with `setStampPanCard(stampId, { panCardImage })` (answers 202; read `panCard.status` from `getStamp`). The SDK does
+  not enforce this (it only validates what it sends); validation reports a missing PAN card as the `PAN_CARD_RECOMMENDED` advisory.
 - **Parties.** `firstParty` and `secondParty` take a name string or an `EstampParty` object
   (`name`, `address`, `phone`, `fatherHusbandName`, `gender: 'MALE' | 'FEMALE' | 'OTHER'`). Use the object when
   the state wants an address or a father's/husband's name (`getState`, `getStateRequirements` tell you).
@@ -227,10 +229,18 @@ Notes:
 
 ### Wallets
 
-Orders debit two prepaid wallets: the **Stamp Duty Wallet** (statutory duty) and the **Service Fee Wallet**
-(procurement and API charges, net of GST). `client.estamp.getWallet()` reads both; `client.stampDutyWallet` and
-`client.serviceFeeWallet` have `getBalance`, `topup`, `listTransactions`, `listInvoices` and `getInvoice`. Balances
-are decimal strings: parse them. Wallet routes need wallet scopes on your key (ask support if you get 401/403).
+Two prepaid wallets back your account:
+
+- The **Service wallet** is one balance. It pays verification calls and the e-Stamp fees (procurement charge, API
+  charge and convenience fee). Top it up by at least ₹1,000 plus 18% GST. GST on fees is paid at top-up, so an order
+  debits the fees before GST.
+- The **Stamp duty wallet** holds the statutory stamp duty that orders debit.
+
+`client.estamp.getWallet()` reads both. The SDK's Service wallet methods keep their original name, `client.serviceFeeWallet`
+(kept for compatibility); `client.stampDutyWallet` is the Stamp duty wallet. Both have `getBalance`, `topup`,
+`listTransactions`, `listInvoices` and `getInvoice`. Balances are decimal strings: parse them. Wallet routes need wallet
+scopes on your key (ask support if you get 401/403). In API responses and errors the wallet names stay `SERVICE_FEE`
+and `STAMP_DUTY` (for example `details.wallet`). There is no signup credit for new accounts.
 
 ```ts
 const t = await client.stampDutyWallet.topup({ baseAmount: 1000 });
@@ -238,28 +248,28 @@ const t = await client.stampDutyWallet.topup({ baseAmount: 1000 });
 console.log(t.processingFeeAmount, t.gstAmount, t.totalCharged, t.creditAmount);
 ```
 
-A Stamp Duty top-up adds a 6% processing fee on top, plus 18% GST on that fee; the wallet is credited the amount you
+A Stamp duty top-up adds a 6% processing fee on top, plus 18% GST on that fee; the wallet is credited the amount you
 add (`creditAmount`), and a GST tax invoice for the fee is available from `stampDutyWallet.listInvoices()` /
 `getInvoice(topupId)`. Fees can change: show your payer the figures from the response and do not compute them in
-your code. In a Stamp Duty top-up response `baseAmount`, `gstAmount` and `totalCharged` are JSON numbers while
-`processingFeePercent`, `processingFeeAmount` and `creditAmount` are strings; Service Fee top-up amounts are all
-strings. `client.account.getBalance()` / `getUsage()` read your verification wallet balance and usage.
+your code. In a Stamp duty top-up response `baseAmount`, `gstAmount` and `totalCharged` are JSON numbers while
+`processingFeePercent`, `processingFeeAmount` and `creditAmount` are strings; Service wallet top-up amounts are all
+strings. `client.account.getBalance()` / `getUsage()` read your Service wallet balance and usage.
 
 ## Error handling
 
 All errors extend `StampMitraError` (`status`, `code`, `message`, `requestId`, `raw`, `details`).
 
-| HTTP                      | Class                                                                                                        |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| 400 / 422                 | `ValidationError` (`field`, `fieldErrors`: `error.details.errors[]` items `{ field, code, message, index }`) |
-| 401                       | `AuthenticationError`                                                                                        |
-| 402                       | `PaymentRequiredError` (`wallet`: `STAMP_DUTY` or `SERVICE_FEE` on e-Stamp order creation)                   |
-| 403                       | `PermissionError` (server message verbatim, e.g. IP allowlist required)                                      |
-| 404                       | `NotFoundError`                                                                                              |
-| 409                       | `ConflictError`                                                                                              |
-| 429                       | `RateLimitError` (`retryAfter` seconds, when the server sends it)                                            |
-| 5xx                       | `UpstreamError`                                                                                              |
-| network / timeout / abort | `ConnectionError` / `TimeoutError` / `RequestAbortedError`                                                   |
+| HTTP                      | Class                                                                                                                           |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| 400 / 422                 | `ValidationError` (`field`, `fieldErrors`: `error.details.errors[]` items `{ field, code, message, index }`)                    |
+| 401                       | `AuthenticationError`                                                                                                           |
+| 402                       | `PaymentRequiredError` (`wallet`: `STAMP_DUTY` (Stamp duty wallet) or `SERVICE_FEE` (Service wallet) on e-Stamp order creation) |
+| 403                       | `PermissionError` (server message verbatim, e.g. IP allowlist required)                                                         |
+| 404                       | `NotFoundError`                                                                                                                 |
+| 409                       | `ConflictError`                                                                                                                 |
+| 429                       | `RateLimitError` (`retryAfter` seconds, when the server sends it)                                                               |
+| 5xx                       | `UpstreamError`                                                                                                                 |
+| network / timeout / abort | `ConnectionError` / `TimeoutError` / `RequestAbortedError`                                                                      |
 
 Errors are mapped by status only, so non-JSON error bodies still produce the right class.
 
@@ -332,7 +342,7 @@ Nothing is logged by default. Pass `logger: { debug(msg, meta) {} }` to receive 
 
 ## Pricing
 
-The SDK is free and MIT-licensed. You pay only for successful API calls, from one prepaid wallet. Sandbox is free: mock data on every endpoint, and it never debits your wallet.
+The SDK is free and MIT-licensed. You pay only for successful API calls, from your prepaid Service wallet. There is no signup credit. Sandbox is free: mock data on every endpoint, and it never debits your Service wallet.
 
 Per-call rates by plan, in rupees, excluding 18% GST:
 
@@ -354,7 +364,7 @@ Per-call rates by plan, in rupees, excluding 18% GST:
 
 Growth and Scale are also available yearly (₹9,990 and ₹49,990, two months free). There are separate Startup and NGO programmes. Plans, rates and limits can change, and [developer.stampmitra.in/pricing](https://developer.stampmitra.in/pricing) is the source of truth; see it for how an e-Stamp order is priced in total.
 
-API e-Stamp orders are charged per paper as a procurement charge plus an API charge (ex-GST); see the pricing page for current rates.
+API e-Stamp orders are priced per paper: ₹99 procurement charge, plus ₹5 API charge, plus a convenience fee (by default 5% of that paper's duty above ₹1,000). The duty is multiplied by `quantity`. Sandbox quotes use the same default rates as live; rates agreed for your account are not applied in sandbox. The fees are debited from the Service wallet before GST (GST was paid when you topped up), and the duty from the Stamp duty wallet. See the pricing page for current rates.
 
 ## Development
 

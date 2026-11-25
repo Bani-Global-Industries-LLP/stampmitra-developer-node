@@ -1,6 +1,6 @@
 import type { Page } from './usage.js';
 
-/** Balance of one wallet. `balance` is a decimal string: parse it, never concatenate it. */
+/** Balance of one wallet (Service wallet or Stamp duty wallet). `balance` is a decimal string: parse it, never concatenate it. */
 export interface WalletBalance {
   balance: string;
   currency: 'INR';
@@ -10,7 +10,7 @@ export interface EstampWalletPart {
   held: string | null;
   available: string | null;
 }
-/** Both wallets in one read; the Service Fee Wallet is under `serviceFee`. */
+/** Both wallets in one read. `serviceFee` is the Service wallet (the name is kept for compatibility); the top-level fields are the Stamp duty wallet. */
 export interface EstampWallet extends EstampWalletPart {
   currency: 'INR';
   serviceFee: EstampWalletPart;
@@ -23,7 +23,7 @@ export interface WalletTopupParams {
   baseAmount: number;
 }
 /**
- * Stamp Duty top-up. `baseAmount`, `gstAmount` and `totalCharged` are JSON numbers; every other amount is a
+ * Stamp duty wallet top-up. `baseAmount`, `gstAmount` and `totalCharged` are JSON numbers; every other amount is a
  * string. Read the fee, GST and total from here: do not compute them.
  */
 export interface StampDutyWalletTopup {
@@ -43,7 +43,7 @@ export interface StampDutyWalletTopup {
   currency?: string;
   notice?: string;
 }
-/** Service Fee top-up: every amount is a string. */
+/** Service wallet top-up (minimum ₹1,000 plus 18% GST; the type name is kept for compatibility). Every amount is a string. */
 export interface ServiceFeeWalletTopup {
   baseAmount: string;
   gstAmount: string;
@@ -76,7 +76,7 @@ export interface WalletTransaction {
 }
 export type WalletTransactionsPage = Page<WalletTransaction>;
 
-/** GST tax invoice for the processing fee of one paid Stamp Duty top-up (not for the credited amount). */
+/** GST tax invoice for the processing fee of one paid Stamp duty wallet top-up (not for the credited amount). */
 export interface StampDutyWalletInvoice {
   id: string;
   invoiceNumber: string | null;
@@ -93,7 +93,7 @@ export interface StampDutyWalletInvoice {
 }
 export type StampDutyWalletInvoicesPage = Page<StampDutyWalletInvoice> & { notice?: string };
 
-/** GST tax invoice for one Service Fee top-up. */
+/** GST tax invoice for one Service wallet top-up. */
 export interface ServiceFeeWalletInvoice {
   id: string;
   invoiceNumber: string | null;

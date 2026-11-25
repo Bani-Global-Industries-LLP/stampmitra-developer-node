@@ -2,11 +2,12 @@ import { StampMitra } from '@stampmitra/sdk';
 
 const client = new StampMitra({ apiKey: process.env.STAMPMITRA_API_KEY });
 
-// Both e-Stamp wallets in one read. Balances are decimal strings: parse them.
+// Both wallets in one read: the Stamp duty wallet and the Service wallet (`serviceFee`, name kept for
+// compatibility). Balances are decimal strings: parse them.
 const wallets = await client.estamp.getWallet();
-console.log('Stamp Duty:', wallets.balance, 'Service Fee:', wallets.serviceFee.balance);
+console.log('Stamp duty:', wallets.balance, 'Service wallet:', wallets.serviceFee.balance);
 
-// Top up the Stamp Duty Wallet. The fee and GST are added on top of baseAmount and the wallet is credited
+// Top up the Stamp duty wallet. The fee and GST are added on top of baseAmount and the wallet is credited
 // baseAmount: show your payer the figures from the response, do not compute them.
 const topup = await client.stampDutyWallet.topup({ baseAmount: 1000 });
 console.log(topup.processingFeeAmount, topup.gstAmount, topup.totalCharged, topup.creditAmount);

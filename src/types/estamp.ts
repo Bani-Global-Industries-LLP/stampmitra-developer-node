@@ -92,7 +92,7 @@ export interface EstampStampLine {
   sro?: string;
   cessAmount?: number;
   propertyArea?: EstampPropertyArea;
-  /** https link to the payer's PAN card. Advisory: it never blocks an order. */
+  /** https link to the payer's PAN card. An order can be placed without it, but a PAN card is mandatory to complete the stamp. */
   panCardImage?: string;
   costCentre?: string;
   businessUnit?: string;

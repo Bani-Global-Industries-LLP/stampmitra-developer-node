@@ -95,7 +95,7 @@ abstract class Wallet<Topup, Invoice, InvoicePage extends Page<Invoice>> extends
 }
 
 /**
- * `client.stampDutyWallet`: GET /v1/stamp-duty-wallet and its `/topup`, `/transactions`, `/invoices` routes.
+ * `client.stampDutyWallet` (the Stamp duty wallet): GET /v1/stamp-duty-wallet and its `/topup`, `/transactions`, `/invoices` routes.
  * Top-up: a 6% processing fee plus 18% GST on that fee is added on top; the wallet is credited the amount you
  * add. The GST tax invoice (for the fee) is available from `listInvoices` / `getInvoice` (id = `topupId`).
  */
@@ -109,7 +109,7 @@ export class StampDutyWallet extends Wallet<
   }
 }
 
-/** `client.serviceFeeWallet`: GET /v1/service-fee-wallet and its `/topup`, `/transactions`, `/invoices` routes. */
+/** `client.serviceFeeWallet` is the Service wallet (the name is kept for compatibility): GET /v1/service-fee-wallet and its `/topup`, `/transactions`, `/invoices` routes. */
 export class ServiceFeeWallet extends Wallet<
   W.ServiceFeeWalletTopup,
   W.ServiceFeeWalletInvoice,
