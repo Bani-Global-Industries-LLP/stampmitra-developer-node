@@ -77,7 +77,7 @@ Every method also accepts per-request options as its last argument:
 | `client.orders`           | `create`, `get`, `getStatus`, `getPayment`, `listDocuments`, `getDocumentDownload` (orders are addressed by your `externalOrderId`)                                                                                                                                                                                                                                                                                                                                   |
 | `client.payments.intents` | `create`, `get`                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `client.stampDutyWallet`  | `getBalance`, `topup`, `listTransactions`, `listAllTransactions`, `listInvoices`, `listAllInvoices`, `getInvoice`                                                                                                                                                                                                                                                                                                                                                     |
-| `client.serviceFeeWallet` | the same seven methods                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `client.serviceFeeWallet` | the same seven methods (the Service wallet, kept under the service-fee-wallet name for compatibility)                                                                                                                                                                                                                                                                                                                                                                 |
 | `client.account`          | `getBalance`, `getUsage`                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `client.usage`            | `summary`                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `client.logs`             | `list`, `listAll`                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
@@ -195,7 +195,7 @@ try {
   throw err;
 }
 
-// 3. Optional: the payer's PAN card (PDF, JPEG or PNG, up to 10 MB), as multipart/form-data.
+// 3. The payer's PAN card (PDF, JPEG or PNG, up to 10 MB), as multipart/form-data. The order can be placed without it, but the stamp waits until one is on file.
 await client.estamp.uploadOrderDocument(order.id, {
   file: new Blob([await readFile('pan.pdf')], { type: 'application/pdf' }),
   fileName: 'pan.pdf',
@@ -209,9 +209,11 @@ if (cert.available) console.log(cert.certificateNumber, cert.downloadUrl); // do
 
 Notes:
 
-- **The PAN card is advisory.** It never blocks an order. Send `panCardImage` (an https link) on a stamp line, upload
-  the file with `uploadOrderDocument`, or send a link later with `setStampPanCard(stampId, { panCardImage })` (answers
-  202; read `panCard.status` from `getStamp`).
+- **The PAN card is mandatory to complete the stamp.** An order can be placed without it, but until a PAN card is on
+  file the stamp waits. Send `panCardImage` (an https link) on a stamp line, upload the file with
+  `uploadOrderDocument`, or send a link later with `setStampPanCard(stampId, { panCardImage })` (answers 202; read
+  `panCard.status` from `getStamp`). The SDK never rejects an order for lacking it (the `PAN_CARD_RECOMMENDED` advisory
+  is only a hint).
 - **Parties.** `firstParty` and `secondParty` take a name string or an `EstampParty` object
   (`name`, `address`, `phone`, `fatherHusbandName`, `gender: 'MALE' | 'FEMALE' | 'OTHER'`). Use the object when
   the state wants an address or a father's/husband's name (`getState`, `getStateRequirements` tell you).
@@ -227,8 +229,11 @@ Notes:
 
 ### Wallets
 
-Orders debit two prepaid wallets: the **Stamp Duty Wallet** (statutory duty) and the **Service Fee Wallet**
-(procurement and API charges, net of GST). `client.estamp.getWallet()` reads both; `client.stampDutyWallet` and
+Customers have two prepaid wallets: the **Stamp Duty wallet** (statutory duty) and one **Service wallet** (the same
+balance that pays for verification calls, our e-Stamp service fee and the per-paper API charge). The Service wallet is
+kept under the service-fee-wallet name for compatibility (`client.serviceFeeWallet`, `/v1/service-fee-wallet*`, the
+`serviceFee` field of `client.estamp.getWallet()`): one balance for verification calls and e-Stamp fees; a minimum
+Rs 1,000 + 18% GST top-up. `client.estamp.getWallet()` reads both; `client.stampDutyWallet` and
 `client.serviceFeeWallet` have `getBalance`, `topup`, `listTransactions`, `listInvoices` and `getInvoice`. Balances
 are decimal strings: parse them. Wallet routes need wallet scopes on your key (ask support if you get 401/403).
 
@@ -242,8 +247,8 @@ A Stamp Duty top-up adds a 6% processing fee on top, plus 18% GST on that fee; t
 add (`creditAmount`), and a GST tax invoice for the fee is available from `stampDutyWallet.listInvoices()` /
 `getInvoice(topupId)`. Fees can change: show your payer the figures from the response and do not compute them in
 your code. In a Stamp Duty top-up response `baseAmount`, `gstAmount` and `totalCharged` are JSON numbers while
-`processingFeePercent`, `processingFeeAmount` and `creditAmount` are strings; Service Fee top-up amounts are all
-strings. `client.account.getBalance()` / `getUsage()` read your verification wallet balance and usage.
+`processingFeePercent`, `processingFeeAmount` and `creditAmount` are strings; Service wallet top-up amounts are all
+strings. `client.account.getBalance()` / `getUsage()` read your Service wallet balance and usage.
 
 ## Error handling
 

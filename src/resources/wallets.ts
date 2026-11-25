@@ -109,7 +109,11 @@ export class StampDutyWallet extends Wallet<
   }
 }
 
-/** `client.serviceFeeWallet`: GET /v1/service-fee-wallet and its `/topup`, `/transactions`, `/invoices` routes. */
+/**
+ * `client.serviceFeeWallet`: GET /v1/service-fee-wallet and its `/topup`, `/transactions`, `/invoices` routes.
+ * Service wallet (kept under the service-fee-wallet name for compatibility): one balance for verification calls and
+ * e-Stamp fees; a minimum Rs 1,000 + 18% GST top-up.
+ */
 export class ServiceFeeWallet extends Wallet<
   W.ServiceFeeWalletTopup,
   W.ServiceFeeWalletInvoice,

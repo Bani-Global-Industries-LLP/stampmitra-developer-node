@@ -177,7 +177,7 @@ export class Estamp extends Resource {
    * POST /v1/estamp/orders. Spends money, so the API REQUIRES an Idempotency-Key: one is generated when you pass
    * none and is reused across automatic retries. A generated key cannot protect you if YOU call this again after
    * an unknown outcome, so pass `{ idempotencyKey }` derived from something stable you own (and persist it).
-   * Debits the Stamp Duty and Service Fee wallets; a short wallet is a `PaymentRequiredError` (`wallet`).
+   * Debits the Stamp Duty wallet and the Service wallet; a short wallet is a `PaymentRequiredError` (`wallet`).
    */
   createOrder(body: T.EstampOrderRequest, opts?: RequestOptions): APIPromise<T.EstampOrder> {
     try {
@@ -229,7 +229,7 @@ export class Estamp extends Resource {
 
   /**
    * POST /v1/estamp/orders/{orderId}/documents (multipart/form-data). Uploads the payer's PAN card (PDF, JPEG or
-   * PNG, up to 10 MB; checked by the API). Optional and advisory. Sends an `Idempotency-Key` (generated when you
+   * PNG, up to 10 MB; checked by the API). An order can be placed without it, but the PAN card is mandatory to complete the stamp: until one is on file the stamp waits. Sends an `Idempotency-Key` (generated when you
    * pass none); a retry re-sends the whole file with the same key.
    */
   uploadOrderDocument(

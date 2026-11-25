@@ -5,6 +5,10 @@ versioning: [SemVer](https://semver.org/) (pre-1.0: minor versions may contain b
 
 ## [Unreleased]
 
+### Changed
+
+- Documentation only: one Service wallet (kept under the service-fee-wallet name for compatibility) for verification calls and e-Stamp fees; the PAN card is mandatory to complete the stamp (an order can be placed without it).
+
 ## [0.2.0] - 2026-11-24
 
 Targets API contract **1.2.0** (62 operations, 31 new). Pre-1.0: this minor release also contains one behaviour change (see Changed).

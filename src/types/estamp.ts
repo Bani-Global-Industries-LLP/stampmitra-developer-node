@@ -92,7 +92,7 @@ export interface EstampStampLine {
   sro?: string;
   cessAmount?: number;
   propertyArea?: EstampPropertyArea;
-  /** https link to the payer's PAN card. Advisory: it never blocks an order. */
+  /** https link to the payer's PAN card. An order can be placed without it, but the PAN card is mandatory to complete the stamp: until one is on file the stamp waits; send it with the order or later with `setStampPanCard`. */
   panCardImage?: string;
   costCentre?: string;
   businessUnit?: string;
@@ -237,7 +237,7 @@ export interface EstampOrderStampRef {
   id: string;
   clientReference?: string;
 }
-/** A non-blocking hint; nothing is held back because of an advisory. */
+/** A non-blocking hint that never rejects the order (e.g. `PAN_CARD_RECOMMENDED`: the PAN card is still mandatory to complete the stamp). */
 export interface EstampOrderAdvisory {
   code: string;
   field?: string;

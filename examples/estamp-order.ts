@@ -42,7 +42,7 @@ try {
 }
 console.log(order.id, order.status);
 
-// 3. Optional and advisory: the payer's PAN card (PDF, JPEG or PNG, up to 10 MB).
+// 3. The payer's PAN card (PDF, JPEG or PNG, up to 10 MB): the order can be placed without it, but it is mandatory to complete the stamp.
 await client.estamp.uploadOrderDocument(order.id, {
   file: new Blob([await readFile('pan.pdf')], { type: 'application/pdf' }),
   fileName: 'pan.pdf',

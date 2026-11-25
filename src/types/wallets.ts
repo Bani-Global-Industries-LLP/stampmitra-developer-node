@@ -10,7 +10,7 @@ export interface EstampWalletPart {
   held: string | null;
   available: string | null;
 }
-/** Both wallets in one read; the Service Fee Wallet is under `serviceFee`. */
+/** Both wallets in one read; the Service wallet (kept under the service-fee-wallet name for compatibility) is under `serviceFee`. */
 export interface EstampWallet extends EstampWalletPart {
   currency: 'INR';
   serviceFee: EstampWalletPart;
@@ -43,7 +43,7 @@ export interface StampDutyWalletTopup {
   currency?: string;
   notice?: string;
 }
-/** Service Fee top-up: every amount is a string. */
+/** Service wallet top-up (kept under the service-fee-wallet name for compatibility; minimum Rs 1,000 + 18% GST): every amount is a string. */
 export interface ServiceFeeWalletTopup {
   baseAmount: string;
   gstAmount: string;
@@ -93,7 +93,7 @@ export interface StampDutyWalletInvoice {
 }
 export type StampDutyWalletInvoicesPage = Page<StampDutyWalletInvoice> & { notice?: string };
 
-/** GST tax invoice for one Service Fee top-up. */
+/** GST tax invoice for one Service wallet top-up (kept under the service-fee-wallet name for compatibility). */
 export interface ServiceFeeWalletInvoice {
   id: string;
   invoiceNumber: string | null;

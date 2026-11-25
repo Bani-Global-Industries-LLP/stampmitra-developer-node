@@ -3,7 +3,7 @@ import type { AccountBalance, AccountUsage } from '../types/account.js';
 import { Resource } from './base.js';
 
 export class Account extends Resource {
-  /** GET /v1/account/balance. Wallet balance and low-balance state (amounts exclude GST). */
+  /** GET /v1/account/balance. Service wallet balance (verification calls) and low-balance state (amounts exclude GST). */
   getBalance(opts?: RequestOptions): APIPromise<AccountBalance> {
     return this.ctx.http.request({ method: 'GET', path: '/v1/account/balance' }, opts);
   }
